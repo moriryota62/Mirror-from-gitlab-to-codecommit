@@ -1,32 +1,48 @@
 # Mirror from gitlab to codecommit
 
-セキュリティの厳しいシステムの場合、本番環境へのアクセスを物理的に隔離された場所からのみに制限することがあります。この隔離環境は物理的だけでなく、ネットワーク的にもインバウンド/アウトバウンドの制限がされています。そのため、この隔離環境にデータを持ち運ぶのは大変です。
+個人情報等をあつかうセキュリティの厳しいシステムの場合、本番環境へのアクセスを物理的に隔離された場所からのみに制限することがあります。この隔離環境は物理的だけでなくネットワーク的にもインバウンド/アウトバウンドの制限がされています。これにより隔離環境からデータを持ち出すことを難しくしています。同時に隔離環境へデータを持ち運ぶのも手間がかかります。
 
-IaCでシステムを運用する場合、コードをこの隔離環境に連携する必要があります。多くの場合、IaCのコードはGitで管理されているはずです。隔離環境でなければ端末からGitリポジトリをpullすればよいですが、隔離環境の端末からGitリポジトリに直接できてしまうと問題もあります。たとえば、隔離環境の端末からGitリポジトリへのアウトバウンドを許可し、pullしかできないGitのユーザーを用意したとしましょう。一見問題ない様に思えますが、端末側の設定を変更してpushもできるユーザーになってしまえば本番環境のデータをGitにpushできてしまいます。このように、本番環境のデータを簡単に持ち出せてしまう仕組みは隔離環境に好ましくありません。
+IaCでシステムを運用する場合、コードを隔離環境に連携する必要があります。多くの場合、IaCのコードはGitで管理されているはずです。隔離環境でなければ端末からGitリポジトリをpullすればよいですが、隔離環境の端末からGitリポジトリに直接アクセスできてしまうと問題もあります。たとえば隔離環境の端末からpullしかできないユーザーを使い運用していくことを考えます。一見問題ない様に思えますが、Gitリポジトリに直接アクセスできるため、pushもできるユーザーに切り替えてしまえば隔離環境からデータを持ち出せてしまいます。このように、データを簡単に持ち出せてしまう仕組みは隔離環境に好ましくありません。
 
-そこでGitリポジトリのコードを安全に隔離環境へ連携する方法を紹介します。ここで言う安全とはGitリポジトリから隔離環境へデータを送ることができますが、隔離環境からデータを外部に送れない仕組みのことです。また、この仕組の良いところは連携する時に複雑な手順を必要としない点です。git pushまたはgit pullを行うだけで簡単にデータを送ることができます。
+そこで隔離環境からはデータを持ち出せず、Gitリポジトリのコードを安全に隔離環境へ連携する方法を紹介します。この仕組は隔離環境へデータを起こることはできますが、隔離環境からデータを持ち出せません。操作もgit pushまたはgit pullだけで簡単です。
 
 なお、今回紹介する方法はAWSを前提としています。
 
 # 全体像
 
-AWSは開発用アカウントと本番用アカウントの2環境あります。コードを管理するGitリポジトリは開発環境にセルフホストのGitLabを建てます。開発環境のGitLabには作業端末は直接アクセス可能です。セキュリティ対策のため、開発環境からのアウトバウンドはフォワードプロキシで制限します。本番環境にはCodeCommitを作成します。CodeCommitにアクセスする専用のIAMユーザーを本番環境に作成します。IAMユーザーはミラー用と隔離環境用の2種類作成します。ミラー用ユーザーはpushを行えますが、隔離環境用ユーザーはpullのみを許可します。開発環境のGitLabから本番環境のCodeCommitへリポジトリのミラーリングを行いデータを連携します。ミラーはミラー用ユーザーの認証情報を使用します。最後に、本番環境にアクセス可能な隔離環境の端末から隔離環境用ユーザーでpullします。これで外部からデータを取得できますが、外部に送ることはできない仕組みになります。
+AWSは開発用アカウントと本番用アカウントの2つあります。開発環境にはコードを管理するGitリポジトリをセルフホストGitLabで建てます。このGitLabに対するインバウンドは作業端末のみを許可し、アウトバウンドはフォワードプロキシで制御します。本番環境にはCodeCommitを作成します。CodeCommitにアクセスする専用のIAMユーザーを作成します。IAMユーザーはpush用とpull用の2種類を作成します。開発環境のGitLabから本番環境のCodeCommitへリポジトリのミラーリングを行いデータを連携します。ミラーはpush用ユーザーを使用して行います。最後に、本番環境にアクセス可能な隔離環境の端末からpull用ユーザーでpullします。
+
+このように、この仕組の肝は開発用のGitリポジトリと隔離環境用のGitリポジトリを別々で作成し、リポジトリミラーで連携する点です。また、各Gitリポジトリを使用するユーザーを別々にしアクセスを制御しています。今回は セフルホストGitLab -> CodeCommit で連携させましたが他のGitリポジトリの組み合わせでも似たようなことはできると思います。
 
 絵
 
+## 作業端末
+
+普段の開発で使用する端末です。開発用のGitLabにもアクセスできます。本番環境のCodeCommitにはアクセスできません。
+
 ## GitLab
 
-普段の開発で使用しているGitLabです。ソースの管理はこのGitLabで一元管理します。このGitLabインスンタンスに付与するSecurityGroupはインバウンド/アウトバウンドともに制限を設けます。インバウンドは作業端末からのIPアドレスのみを許可します。アウトバウンドはVPC内部のみ許可します。セキュリティ対策のため、直接インターネットへ出ることは禁止しフォワードプロキシを経由するようにします。
+普段の開発で使用するGitLabです。コードの管理はこのGitLabで行います。このGitLabはインバウンドおよびアウトバウンドの通信を行います。
+
+インバウンドの通信は普段の開発で行うGitの操作です。そのため、SecurityGroupのインバウンドは作業端末からのIPアドレスのみを許可します。
+
+アウトバウンドはリポジトリのミラーで使用します。ミラーはインターネットのCodeCommitエンドポイントに通信します。インターネットへのアウトバウンドを絞りたい場合、フォワードプロキシを経由させます。SecurityGroupのアウトバウンドはVPC内にあるフォワードプロキシを許可します。GitLabにはプロキシの設定を行い、フォワードプロキシでURLのフィルタリングを行います。
+
+隔離環境へ連携したいリポジトリにはリポジトリのミラー設定を行います。ミラーには本番環境のCodeCommit URLとpush用ユーザーの認証情報を使って設定します。
+
+> 本当はフォワードプロキシを建てず、CodeCommitのVPCエンドポイントを経由する方法を採りたかったです。これならインターネットを経由しないでミラーできるため、フォワードプロキシも不要です。しかし、この方法だとミラーは可能ですが、push用ユーザーのソースIPの絞り込みができませんでした。具体的にはVPCエンドポイント経由でミラーした際のソースIPをCloudTrailで確認するとVpcSourceIpがAWS Internalと表示され、絞り込めませんでした。他にもSourceVpc等で絞れないか試しましたかそれも駄目でした。ソースIPの絞り込みができないと、例えば隔離端末からpush用ユーザーを使い本番データをpushすることができてしまい問題です。これを防ぐためソースIPの絞り込みができるインターネット経由でのミラーニングを採用しました。もしVPCエンドポイント経由で絞り込む方法を知っていれば教えてほしいです。
 
 ## フォワードプロキシ
 
-VPCからインターネットへ出る前段にフォワードプロキシを建て、アウトバウンドを制限します。宛先のURLはホワイトリストで許可します。ミラーに必要なのはCodeCommitのエンドポイントであるため、`.amazonaws.com`などを許可すれば良いです。インターネットへ出る経路は GitLab -> フォワードプロキシ -> NAT Gateway となります。そのため、本番環境のCodeCommitへアクセスする際のソースIPはNAT Gatewayになります。
-
-> 本当はフォワードプロキシを建てず、CodeCommitのVPCエンドポイントをVPCに作成する方法を採りたかったです。これならインターネットを経由しないでミラーできます。しかし、この方法だとミラー用ユーザーのソースIPの絞り込みができませんでした。具体的にはVPCエンドポイント経由でミラーした際のソースIPをCloudTrailで確認するとVpcSourceIpがAWS Internalと表示され、絞り込めませんでした。他にもSourceVpc等でしぼれないか試しましたかそれも駄目でした。ソースIPの絞り込みができないと、例えば隔離端末からミラー用ユーザーを使い本番データをpushすることができてしまいます。これを防ぐためソースIPの絞り込みができるインターネット経由でのミラーニングを採用しました。もしVPCエンドポイント経由で絞り込む方法を知っていれば教えてほしいです。
+GitLabからのアウトバウンドを絞りたい場合、フォワードプロキシを建ててアウトバウンドを制限します。URLはホワイトリストで許可します。ミラーに必要なのはCodeCommitのエンドポイントであるため、`.amazonaws.com`などを許可すれば良いです。なお、フォワードプロキシを使う場合、GitLabからCodeCommitへ接続する経路は GitLab -> フォワードプロキシ -> NAT Gateway -> CodeCommit となります。そのため、本番環境で作成するpush用ユーザーのソースIPはNatGatewayのIPアドレスで指定します。
 
 ## CodeCommit
 
-本番環境にCodeCommitのリポジトリを作成します。また、CodeCommitにアクセスする専用のIAMユーザーも作成します。IAMユーザーはミラー用と端末用の2つ作成します。ミラー用のユーザーにはGitLabからリポジトリをミラーするのに必要な権限を与え、アクセス元のソースIPを開発環境のNAT Gatewayに限定します。これでCodeCommitへのpushは開発環境からのみ可能となり、本番環境および隔離環境からはpushできません。端末用のユーザーはpullに必要な権限を与え、アクセス元のソースIPを隔離環境の端末に限定します。
+本番環境にCodeCommitのリポジトリを作成します。また、CodeCommitにアクセスする専用のIAMユーザーも作成します。IAMユーザーはpush用とpull用の2つ作成します。push用のユーザーにはGitLabからリポジトリをミラーするのに必要な権限を与え、アクセス元のソースIPを開発環境のNAT Gatewayに限定します。これでCodeCommitへのpushは開発環境からのみ可能となり、本番環境および隔離環境からはpushできません。pull用のユーザーはpullに必要な権限を与え、アクセス元のソースIPを隔離環境の端末に限定します。
+
+## 隔離環境端末
+
+本番作業で使用する端末です。この環境の端末はプロキシ等でアクセスできる外部接続先が制限されています。開発用のGitLabには直接アクセスできません。
 
 # Terraform
 
@@ -38,7 +54,20 @@ VPCからインターネットへ出る前段にフォワードプロキシを�
 - 本番環境用
   - CodeCommit  リポジトリ、IAMユーザー(push用/pull用)を作成します。
 
-フォワードプロキシのコードは含まれていません。
+フォワードプロキシのコードは含まれていません。説明や注意事項は各モジュール配下のREDME.mdを確認してください。各モジュールの`versions.tf`は以下のように設定しています。自身の環境に合わせてタグ等は修正してください。
+
+```
+provider "aws" {
+  region = "ap-northeast-1"
+  default_tags {
+    tags = {
+      pj    = "mirror"
+      env   = "dev"
+      owner = "mori"
+    }
+  }
+}
+```
 
 # 構築手順
 
@@ -52,26 +81,22 @@ VPCからインターネットへ出る前段にフォワードプロキシを�
 - dev/gitlab
 - prd/codecommit
 
-なお、`prd/codecommit`に関しては注意があります。フォワードプロキシを使用する場合、開発環境のNATゲートウェイのIPアドレスを指定してください。フォワードプロキシを使用しない場合、GitLabのパブリックIPを指定してください。
-
-
-
 ## 2. CodeCommitユーザーの認証情報
 
-IAMユーザーを作成した後、マネジメントコンソールでCodeCommitのHTTPS接続用のGit認証を作成します。やり方はAWSドキュメントの[Git 認証情報を使用した HTTPS ユーザーのセットアップ](https://docs.aws.amazon.com/ja_jp/codecommit/latest/userguide/setting-up-gc.html#setting-up-gc-iam)またはGitLabのドキュメントの[Set up a push mirror from GitLab to AWS CodeCommit](https://docs.gitlab.com/ee/user/project/repository/mirror/push.html#set-up-a-push-mirror-from-gitlab-to-aws-codecommit)にあります。作成した各ユーザーのUsernameとPasswordは控えておきます。
+CodeCommitモジュールでIAMユーザーを作成した後、マネジメントコンソールでCodeCommitのHTTPS接続用のGit認証を作成します。やり方はAWSドキュメントの[Git 認証情報を使用した HTTPS ユーザーのセットアップ](https://docs.aws.amazon.com/ja_jp/codecommit/latest/userguide/setting-up-gc.html#setting-up-gc-iam)またはGitLabのドキュメントの[Set up a push mirror from GitLab to AWS CodeCommit](https://docs.gitlab.com/ee/user/project/repository/mirror/push.html#set-up-a-push-mirror-from-gitlab-to-aws-codecommit)にあります。作成した各ユーザーのUsernameとPasswordは控えておきます。
 
 ## 3. フォワードプロキシ作成
 
 フォワードプロキシを使用しない場合は飛ばしてください。
 
-AWSにフォワードプロキシを作成する方法は多々ありますが、私の環境にはEKSがあるためEKS Fargateでフォワードプロキシを構築します。詳しいやり方はこちらの[]()を参照ください。
+AWSにフォワードプロキシを作成する方法は多々ありますが、私の環境にはEKSがあるためEKS Fargateでフォワードプロキシを構築します。やり方はこちらの[moriryota62/squid-on-eks](https://github.com/moriryota62/squid-on-eks)を参照ください。
 
 ## 4. GitLabにプロキシ設定
 
 フォワードプロキシを使用しない場合は飛ばしてください。
 
 GitLabにフォワードプロキシを設定する方法はこちらの[Setting custom environment variables](https://docs.gitlab.com/omnibus/settings/environment-variables.html)が参考になります。ミラーの場合、gitalyにプロキシを設定します。
-たとえば以下の様に/etc/gitlab/gitlab.rbを設定します。http_proxyおよびhttps_proxyの指定先は構築するフォワードプロキシです。
+たとえば以下の様に/etc/gitlab/gitlab.rbを設定します。http_proxyおよびhttps_proxyの指定先はフォワードプロキシの公開アドレスです。
 
 ```
 gitaly['env'] = {
@@ -90,24 +115,27 @@ gitlab-ctl start
 
 ## 5. GitLabのリポジトリでミラー設定
 
+GitLabのリポジトリでミラーを設定します。公式の設定方法は[Set up a push mirror from GitLab to AWS CodeCommit](https://docs.gitlab.com/ee/user/project/repository/mirror/push.html#set-up-a-push-mirror-from-gitlab-to-aws-codecommit)にあります。
 
+1. GitLabのミラー対象リポジトリで`Settings`->`Repository`->`Mirroring repositories`を開く。
 
-```
-http://ec2-3-6-112-173.ap-south-1.compute.amazonaws.com/projects/new
-```
+2. Git repository URLの入力ボックスにてCodeCommitのクローン用URL入力する。  
+`https://mirror-prd-codecommit_access_user-at-456247553902@git-codecommit.ap-northeast-1.amazonaws.com/v1/repos/mirror`  
+のような形式で入力する。＠の前の部分は作成したCodeCommitモジュールで作成したpush用ユーザーのGit認証用のユーザー名を使っている。  
 
-GitLabのリポジトリでミラーを設定します。設定方法はGitLabドキュメントの[Set up a push mirror from GitLab to AWS CodeCommit](https://docs.gitlab.com/ee/user/project/repository/mirror/push.html#set-up-a-push-mirror-from-gitlab-to-aws-codecommit)にあります。
+3. **Mirror direction**はPush、**Authentication method**はPasswordのままでOK
 
-以下のようにpushミラーの設定をします。URLにはCodeCommitのURLに本番環境で作成したミラー用ユーザーの認証情報を加えます。
+4. **Password**はpush用ユーザーのGit認証用のパスワードを使う。
 
-```
-URL: 
-```
+5. `Mirror repository`で設定を反映する。
+
+6. 追加するとMirrored repositoriesに追加される。右はしのリロードマークを押すとミラーリングを手動で実行できる。
+
+7. 上記をリポジトリ毎に実施する。  
 
 ## 6. 隔離端末からCodeCommitをクローン
 
-隔離端末からCodeCommitのリポジトリをクローンします。マネジメントコンソール等でCodeCommitのHTTPSクローンURLを確認しクローンします。ユーザーとパスワードは本番環境で作成した隔離端末用ユーザーの認証情報を指定します。
-
+隔離環境の端末からCodeCommitのリポジトリをクローンします。マネジメントコンソール等でCodeCommitのHTTPSクローンURLを確認しクローンします。ユーザーとパスワードは本番環境で作成した隔離端末用ユーザーの認証情報を指定します。
 
 ## 7. 動作確認
 
