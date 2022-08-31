@@ -83,6 +83,8 @@ provider "aws" {
 
 CodeCommitモジュールで本番環境にIAMユーザーを作成した後、マネジメントコンソールでCodeCommitのHTTPS接続用のGit認証を作成します。やり方はAWSドキュメントの[Git 認証情報を使用した HTTPS ユーザーのセットアップ](https://docs.aws.amazon.com/ja_jp/codecommit/latest/userguide/setting-up-gc.html#setting-up-gc-iam)またはGitLabのドキュメントの[Set up a push mirror from GitLab to AWS CodeCommit](https://docs.gitlab.com/ee/user/project/repository/mirror/push.html#set-up-a-push-mirror-from-gitlab-to-aws-codecommit)にあります。作成した各ユーザーのUsernameとPasswordは控えておきます。
 
+また、CodeCommitのHTTPSのクローンURLも控えておきます。
+
 ## 3. フォワードプロキシ作成
 
 フォワードプロキシを使用しない場合は飛ばしてください。
@@ -94,7 +96,7 @@ CodeCommitモジュールで本番環境にIAMユーザーを作成した後、�
 フォワードプロキシを使用しない場合は飛ばしてください。
 
 開発環境のGitLabにフォワードプロキシを設定する方法はこちらの[Setting custom environment variables](https://docs.gitlab.com/omnibus/settings/environment-variables.html)が参考になります。ミラーの場合、gitalyにプロキシを設定します。
-たとえば以下の様に/etc/gitlab/gitlab.rbを設定します。http_proxyおよびhttps_proxyの指定先はフォワードプロキシの公開アドレスです。
+セッションマネージャ等でセルフホストGitLabに入り、以下の様に/etc/gitlab/gitlab.rbを設定します。http_proxyおよびhttps_proxyの指定先はフォワードプロキシの公開アドレスです。
 
 ```
 gitaly['env'] = {
@@ -115,27 +117,71 @@ gitlab-ctl start
 
 開発環境のGitLabのリポジトリでミラーを設定します。公式の設定方法は[Set up a push mirror from GitLab to AWS CodeCommit](https://docs.gitlab.com/ee/user/project/repository/mirror/push.html#set-up-a-push-mirror-from-gitlab-to-aws-codecommit)にあります。
 
-1. GitLabのミラー対象リポジトリで`Settings`->`Repository`->`Mirroring repositories`を開く。
+1. セルフホストGitLabのパブリックDNS名を使って作業端末からブラウザでアクセスします。アクセスはhttpを使用する。
 
-2. Git repository URLの入力ボックスにてCodeCommitのクローン用URL入力する。  
-`https://mirror-prd-codecommit_access_user-at-456247553902@git-codecommit.ap-northeast-1.amazonaws.com/v1/repos/mirror`  
+2. ログイン画面で**username**はroot、**password**はEC2インスタンスのインスタンスIDを入力してログインする。
+
+3. **New Project**からミラー対象のプロジェクト(リポジトリ)を作成する。例としてtest-repoという名前のプロジェクト(リポジトリ)作成する。
+
+4. ミラー対象リポジトリで`Settings`->`Repository`->`Mirroring repositories`を開く。
+
+5. Git repository URLの入力ボックスにてCodeCommitのクローン用URL入力する。  
+`https://mirror-prd-codecommit_access_user-at-456247553902@git-codecommit.ap-northeast-1.amazonaws.com/v1/repos/test-repo`  
 のような形式で入力する。＠の前の部分は作成したCodeCommitモジュールで作成したpush用ユーザーのGit認証用のユーザー名を使っている。  
 
-3. **Mirror direction**はPush、**Authentication method**はPasswordのままでOK
+6. **Mirror direction**はPush、**Authentication method**はPasswordのままでOK
 
-4. **Password**はpush用ユーザーのGit認証用のパスワードを使う。
+7. **Password**はpush用ユーザーのGit認証用のパスワードを使う。
 
-5. `Mirror repository`で設定を反映する。
+8. `Mirror repository`で設定を反映する。
 
-6. 追加するとMirrored repositoriesに追加される。右はしのリロードマークを押すとミラーリングを手動で実行できる。
+9. 追加するとMirrored repositoriesに追加される。右はしのリロードマークを押すとミラーリングを手動で実行できる。**Last update attempt**と**Last successful update**が両方ともjust nowになれば問題なくミラー出来ている。
 
-7. 上記をリポジトリ毎に実施する。  
+10. 上記をリポジトリ毎に実施する。  
 
 ## 6. 隔離端末からCodeCommitをクローン
 
-隔離環境の端末からCodeCommitのリポジトリをクローンします。マネジメントコンソール等でCodeCommitのHTTPSクローンURLを確認しクローンします。ユーザーとパスワードは本番環境で作成した隔離端末用ユーザーの認証情報を指定します。
+隔離環境の端末からCodeCommitのリポジトリをクローンします。マネジメントコンソール等でCodeCommitのHTTPSクローンURLを確認しクローンします。ユーザーとパスワードは本番環境で作成したpull用ユーザーの認証情報を指定します。
 
 ## 7. 動作確認
 
-1. 作業端末から開発環境のGitLabに修正を加えます。
-2. 隔離端末から本番環境のCodeCommitをpullし、変更が反映されていることを確認します。
+1. 作業端末に開発環境のGitLabからリポジトリをクローンします。認証情報はGitLabのユーザー(特に作成してなければroot)を使用します。
+
+``` sh
+$ git clone http://ec2-3-109-224-199.ap-south-1.compute.amazonaws.com/gitlab-instance-ece16e7e/test-repo.git
+Cloning into 'test-repo'...
+Username for 'http://ec2-3-109-224-199.ap-south-1.compute.amazonaws.com': root
+Password for 'http://root@ec2-3-109-224-199.ap-south-1.compute.amazonaws.com': <instance id>
+```
+
+2. 修正を加えてpushします。
+
+``` sh
+$ cd test-repo
+$ echo "mirror test" > mirror-test
+$ git add .
+$ git commit -m "mirror test"
+$ git push
+```
+
+3. 隔離端末から本番環境のCodeCommitをpullし、変更が反映されていることを確認します。
+
+``` sh
+$ cd test-repo
+$ git pull
+$ ll
+total 24
+-rw-r--r--  1 moriryota  staff  6308  8 31 16:44 README.md
+-rw-r--r--  1 moriryota  staff    12  8 31 16:57 mirror-test
+```
+
+4. 隔離端末からpushしようとしてもできません。
+
+``` sh
+$ echo "push test" > push-test
+$ git add .
+$ git commit -m "push test"
+$ git push
+fatal: unable to access 'https://git-codecommit.ap-northeast-1.amazonaws.com/v1/repos/test-repo/': The requested URL returned error: 403
+```
+

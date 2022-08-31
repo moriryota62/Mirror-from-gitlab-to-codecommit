@@ -1,5 +1,5 @@
 # common parameter
-base_name                  = "mirror-test"
+base_name                  = "mirror-dev"
 ec2_ami_id                 = "ami-055b91c377120f669" #2022/08/17 ap-northeast-1
 vpc_id                     = "vpc-00000bf9999e11111"
 ec2_instance_type          = "t2.large"

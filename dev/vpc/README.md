@@ -12,3 +12,5 @@
   - ssm (SSMセッションマネージャ用)
   - ec2messages (SSMセッションマネージャ用)
   - ssmmessages (SSMセッションマネージャ用)
+
+terraform.tfvarsは環境にあわせて修正してください。
