@@ -69,13 +69,13 @@ provider "aws" {
 }
 ```
 
-# 構築手順
+# 手順
 
 以下の順で構築します。3と4はフォワードプロキシを設定する場合のみ実施します。
 
 ## 1. terraform実行
 
-以下のterraformを実行してください。自身の環境に合わせてterraform.tfvarsを修正してください。既存のリソースを使用する場合は実行しなくても良いです。
+以下のterraformを実行してください。自身の環境に合わせてterraform.tfvarsを修正してください。既存のリソースを使用する場合は実行しなくても良いです。devのコードは開発環境で、prdのコードは本番環境で実行してください。
 
 - dev/vpc
 - dev/gitlab
@@ -83,19 +83,19 @@ provider "aws" {
 
 ## 2. CodeCommitユーザーの認証情報
 
-CodeCommitモジュールでIAMユーザーを作成した後、マネジメントコンソールでCodeCommitのHTTPS接続用のGit認証を作成します。やり方はAWSドキュメントの[Git 認証情報を使用した HTTPS ユーザーのセットアップ](https://docs.aws.amazon.com/ja_jp/codecommit/latest/userguide/setting-up-gc.html#setting-up-gc-iam)またはGitLabのドキュメントの[Set up a push mirror from GitLab to AWS CodeCommit](https://docs.gitlab.com/ee/user/project/repository/mirror/push.html#set-up-a-push-mirror-from-gitlab-to-aws-codecommit)にあります。作成した各ユーザーのUsernameとPasswordは控えておきます。
+CodeCommitモジュールで本番環境にIAMユーザーを作成した後、マネジメントコンソールでCodeCommitのHTTPS接続用のGit認証を作成します。やり方はAWSドキュメントの[Git 認証情報を使用した HTTPS ユーザーのセットアップ](https://docs.aws.amazon.com/ja_jp/codecommit/latest/userguide/setting-up-gc.html#setting-up-gc-iam)またはGitLabのドキュメントの[Set up a push mirror from GitLab to AWS CodeCommit](https://docs.gitlab.com/ee/user/project/repository/mirror/push.html#set-up-a-push-mirror-from-gitlab-to-aws-codecommit)にあります。作成した各ユーザーのUsernameとPasswordは控えておきます。
 
 ## 3. フォワードプロキシ作成
 
 フォワードプロキシを使用しない場合は飛ばしてください。
 
-AWSにフォワードプロキシを作成する方法は多々ありますが、私の環境にはEKSがあるためEKS Fargateでフォワードプロキシを構築します。やり方はこちらの[moriryota62/squid-on-eks](https://github.com/moriryota62/squid-on-eks)を参照ください。
+開発環境のGitLabからインターネットへ出る前段にプロキシを建てます。AWSにフォワードプロキシを作成する方法は多々ありますが、私の環境にはEKSがあるためEKS Fargateでフォワードプロキシを構築します。やり方はこちらの[moriryota62/squid-on-eks](https://github.com/moriryota62/squid-on-eks)を参照ください。
 
 ## 4. GitLabにプロキシ設定
 
 フォワードプロキシを使用しない場合は飛ばしてください。
 
-GitLabにフォワードプロキシを設定する方法はこちらの[Setting custom environment variables](https://docs.gitlab.com/omnibus/settings/environment-variables.html)が参考になります。ミラーの場合、gitalyにプロキシを設定します。
+開発環境のGitLabにフォワードプロキシを設定する方法はこちらの[Setting custom environment variables](https://docs.gitlab.com/omnibus/settings/environment-variables.html)が参考になります。ミラーの場合、gitalyにプロキシを設定します。
 たとえば以下の様に/etc/gitlab/gitlab.rbを設定します。http_proxyおよびhttps_proxyの指定先はフォワードプロキシの公開アドレスです。
 
 ```
@@ -115,7 +115,7 @@ gitlab-ctl start
 
 ## 5. GitLabのリポジトリでミラー設定
 
-GitLabのリポジトリでミラーを設定します。公式の設定方法は[Set up a push mirror from GitLab to AWS CodeCommit](https://docs.gitlab.com/ee/user/project/repository/mirror/push.html#set-up-a-push-mirror-from-gitlab-to-aws-codecommit)にあります。
+開発環境のGitLabのリポジトリでミラーを設定します。公式の設定方法は[Set up a push mirror from GitLab to AWS CodeCommit](https://docs.gitlab.com/ee/user/project/repository/mirror/push.html#set-up-a-push-mirror-from-gitlab-to-aws-codecommit)にあります。
 
 1. GitLabのミラー対象リポジトリで`Settings`->`Repository`->`Mirroring repositories`を開く。
 
