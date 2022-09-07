@@ -44,7 +44,7 @@ resource "aws_iam_policy" "codecommit_push_user_access" {
       "Resource": [ "*" ],
       "Condition": {
          "NotIpAddress": {
-             "aws:SourceIp": ${var.natgateway_ipadress}
+             "aws:SourceIp": ${var.incomming_ipadress}
           },
          "Bool": {
              "aws:ViaAWSService": "false"

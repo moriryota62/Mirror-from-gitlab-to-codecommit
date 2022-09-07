@@ -10,12 +10,12 @@ variable "repository_names" {
   type        = list(string)
 }
 
-variable "natgateway_ipadress" {
-  description = "GitLabのパブリックIPアドレス"
+variable "incomming_ipadress" {
+  description = "CodeCommitにPushしてくるパブリックIPアドレス"
   type        = string
 }
 
 variable "secureroom_ipadress" {
-  description = "セキュアルーム端末のIPアドレス"
+  description = "CodeCommitをPullするセキュアルーム端末のIPアドレス"
   type        = string
 }
